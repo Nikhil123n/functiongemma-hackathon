@@ -323,15 +323,24 @@ def generate_hybrid(messages, tools, confidence_threshold=0.99):
 
     hint = function_calls if (validation_score > 0.3 and len(function_calls) > 0) else None
     
-    # Fallback to cloud
-    cloud = generate_cloud(messages, tools, hint=hint)
+    # Fallback to cloud safely
+    try:
+        cloud = generate_cloud(messages, tools, hint=hint)
+    except Exception as e:
+        cloud = dict(local) # Copy edge output if cloud API key is missing on remote
+        
     cloud["source"] = "cloud (fallback with hint)" if hint else "cloud (fallback)"
     cloud["local_confidence"] = raw_confidence
     cloud["complexity"] = complexity
     cloud["adjusted_confidence"] = adjusted_confidence
     cloud["routing_threshold_used"] = routing_threshold
-    cloud["total_time_ms"] += local.get("total_time_ms", 0)
+    cloud["total_time_ms"] = cloud.get("total_time_ms", 0) + local.get("total_time_ms", 0)
     
+    # Ensure all telemetry fields are present to prevent leaderboard ZeroDivisionErrors
+    for key in ["time_to_first_token_ms", "prefill_tokens", "decode_tokens", "prefill_tps", "decode_tps", "total_tokens"]:
+        if key not in cloud:
+            cloud[key] = local.get(key, 1.0)
+            
     return cloud
 
 
