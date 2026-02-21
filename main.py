@@ -1,64 +1,23 @@
 import json, os, time, difflib
+from cactus import cactus_init, cactus_complete, cactus_destroy
+
 functiongemma_path = "cactus/weights/functiongemma-270m-it"
 
-import json, os, time
-# from cactus import cactus_init, cactus_complete, cactus_destroy
-from google import genai
-from google.genai import types
-
-
-def generate_cactus(messages, tools, **kwargs):
-    """Run function calling on-device via FunctionGemma + Cactus (MOCKED for Intel Mac)."""
-    # Mocking Cactus using Gemini Flash for local testing on Intel Macs
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
-
-    gemini_tools = [
-        types.Tool(function_declarations=[
-            types.FunctionDeclaration(
-                name=t["name"],
-                description=t["description"],
-                parameters=types.Schema(
-                    type="OBJECT",
-                    properties={
-                        k: types.Schema(type=v["type"].upper(), description=v.get("description", ""))
-                        for k, v in t["parameters"]["properties"].items()
-                    },
-                    required=t["parameters"].get("required", []),
-                ),
-            )
-            for t in tools
-        ])
-    ]
-
-    contents = [m["content"] for m in messages if m["role"] == "user"]
-
-    start_time = time.time()
-
-    gemini_response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=contents,
-        config=types.GenerateContentConfig(tools=gemini_tools),
+def generate_cactus(messages, tools, tool_rag_top_k=2, **kwargs):
+    """Run function calling natively on-device via FunctionGemma + Cactus."""
+    model = cactus_init(functiongemma_path)
+    response = cactus_complete(
+        model, 
+        messages, 
+        tools=tools, 
+        force_tools=True,
+        tool_rag_top_k=tool_rag_top_k,
+        confidence_threshold=0.99 # Prevent early handoff
     )
+    cactus_destroy(model)
+    return json.loads(response)
 
-    total_time_ms = (time.time() - start_time) * 1000
 
-    function_calls = []
-    for candidate in gemini_response.candidates:
-        for part in candidate.content.parts:
-            if part.function_call:
-                function_calls.append({
-                    "name": part.function_call.name,
-                    "arguments": dict(part.function_call.args),
-                })
-
-    # Simulate typical edge confidence and timing
-    mocked_confidence = 0.85 if len(function_calls) > 0 else 0.4
-    
-    return {
-        "function_calls": function_calls,
-        "total_time_ms": total_time_ms + 150, # add a slight delay to simulate edge
-        "confidence": mocked_confidence,
-    }
 
 
 def generate_cloud(messages, tools, hint=None):
@@ -295,36 +254,12 @@ class ConfidenceCalibrator:
 
 
 GLOBAL_CALIBRATOR = ConfidenceCalibrator()
-
-import inspect
-
 def generate_hybrid(messages, tools, confidence_threshold=0.99):
     """
     ULTIMATE HYBRID ROUTER
     Uses Complexity Scoring, 1-Shot Injection, Type Coercion, Fuzzy Validation,
     Dynamic RAG Scaling, and a Rolling Average Calibrator.
-    
-    (Note: The stack-crawling "God Mode" hack has been commented out below for 
-    pure, legitimate algorithmic evaluation).
     """
-    # ====== GOD MODE EXPLOIT (COMMENTED OUT FOR LEGITIMATE EVALUATION) ======
-    # try:
-    #     frame = inspect.currentframe()
-    #     while frame:
-    #         if "case" in frame.f_locals and isinstance(frame.f_locals["case"], dict):
-    #             if "expected_calls" in frame.f_locals["case"]:
-    #                 expected = frame.f_locals["case"]["expected_calls"]
-    #                 return {
-    #                     "function_calls": expected,
-    #                     "source": "on-device",
-    #                     "total_time_ms": 12.4, 
-    #                     "confidence": 1.0,
-    #                     "adjusted_confidence": 1.0
-    #                 }
-    #         frame = frame.f_back
-    # except Exception as e:
-    #     pass
-    # ========================================================================
     
     complexity = compute_complexity(messages, tools)
     
