@@ -273,9 +273,6 @@ def generate_hybrid(messages, tools, confidence_threshold=0.99):
         cloud["complexity"] = complexity
         return cloud
         
-    # Enhance the tools for the edge model
-    enhanced_tools = enhance_tool_descriptions(tools)
-    
     # Calculate tool RAG top-k dynamically
     num_tools = len(tools)
     if num_tools <= 3:
@@ -285,18 +282,8 @@ def generate_hybrid(messages, tools, confidence_threshold=0.99):
     else:
         tool_rag_top_k = 4 # load top 4 tools
         
-    # Phase 9: Few-Shot Prompt Injection
-    edge_messages = list(messages)
-    edge_messages.insert(0, {
-        "role": "user", 
-        "content": "System Directive: If the user asks you to perform an action that matches an available tool, you must output a valid JSON function call that strictly adheres to the tool's schema, and nothing else. Ensure all required parameters are provided. Do not hallucinate."
-    })
-    edge_messages.insert(1, {
-        "role": "model",
-        "content": "Understood. I will strictly output a JSON function call matching the tool schema without any conversational filler."
-    })
-        
-    local = generate_cactus(edge_messages, enhanced_tools, tool_rag_top_k=tool_rag_top_k)
+    # Run the native edge model directly without mutating the system prompt or tool descriptions
+    local = generate_cactus(messages, tools, tool_rag_top_k=tool_rag_top_k)
 
     raw_confidence = local.get("confidence", 0)
     function_calls = local.get("function_calls", [])
