@@ -238,13 +238,16 @@ class ConfidenceCalibrator:
         return self.threshold
         
     def update(self, validation_score):
-        # Keep last 5 executions
+        # Keep last 5 executions (thread-safe atomic slicing)
         self.history.append(validation_score)
-        if len(self.history) > 5:
-            self.history.pop(0)
+        self.history = self.history[-5:]
             
         # Recent average performance
-        avg_score = sum(self.history) / len(self.history)
+        size = len(self.history)
+        if size == 0:
+            avg_score = validation_score
+        else:
+            avg_score = sum(self.history) / size
         
         # Adjust threshold
         if avg_score > 0.9:
